@@ -1,0 +1,68 @@
+pipeline {
+    agent any
+
+    environment {
+        TF_WORKSPACE = 'prod'
+        TF_BACKEND_CONFIG = 'backend.tfvars'
+        TF_VARS_FILE = 'terraform.tfvars'
+    }
+
+    stages {
+        stage('Setup') {
+            steps {
+                echo "Setting up environment for Terraform"
+                sh 'terraform --version'
+            }
+        }
+
+        stage('Initialize Terraform') {
+            steps {
+                echo "Initializing Terraform with backend configuration"
+                sh """
+                terraform init -backend-config=\$TF_BACKEND_CONFIG
+                """
+            }
+        }
+
+        stage('Select Workspace') {
+            steps {
+                echo "Selecting Terraform workspace"
+                sh """
+                terraform workspace select \$TF_WORKSPACE || terraform workspace new \$TF_WORKSPACE
+                """
+            }
+        }
+
+        stage('Plan Infrastructure') {
+            steps {
+                echo "Planning Terraform infrastructure"
+                sh """
+                terraform plan -var-file=\$TF_VARS_FILE -out=tfplan
+                """
+            }
+        }
+
+        stage('Apply Infrastructure') {
+            steps {
+                input message: 'Approve to apply infrastructure?'
+                echo "Applying Terraform infrastructure"
+                sh """
+                terraform apply -input=false tfplan
+                """
+            }
+        }
+    }
+
+    post {
+        always {
+            echo "Cleaning up temporary files"
+            sh "rm -f tfplan"
+        }
+        success {
+            echo "Terraform deployment successful"
+        }
+        failure {
+            echo "Terraform deployment failed"
+        }
+    }
+}
